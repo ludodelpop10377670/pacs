@@ -1,4 +1,4 @@
-/*! MyMat0 A simple class for full matrix
+/*! MyMat0 A simple class for full matrix version FULL TEMPLATE
     Luca Formaggia 2005     */
 #ifndef _MYMAT0__HH
 #define _MYMAT0__HH
@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cmath>
 #include <ctime>
+#include <type_traits>
 /*!
   @file MyMat0.hpp
   @author Luca Formaggia
@@ -22,9 +23,6 @@ namespace LinearAlgebra{
  */
   enum StoragePolicySwitch {ROWMAJOR,COLUMNMAJOR};
 
-  template< StoragePolicySwitch S>
-  struct StorageType{};
-
   //! Type to hold indexex.
   /*!
     The standard library gives me one, so we use it
@@ -34,17 +32,30 @@ namespace LinearAlgebra{
     using size_type we are sure that we are consistent with the standard
     library (and avoid problem with particular computer architectures)
    */
-  typedef unsigned int size_type;
 
+
+  namespace Helpers
+  {
+  //! A Helper class that allow to distinguish row and column ordering
+  /*! It ia a nice trick by Alexandrescu. I convert an enumerator to a type
+    so that I can apply overloading
+  */
+    template<StoragePolicySwitch storagePolicy>
+    struct storagePolicyType{};
+    //! A helper class to distinguish treu from false
+    template<bool T>
+    struct fillSwitch{};
+  }
   //! A simple matrix class of double
   /*!
    * It stores a matrix of double entries, allowing different type of
    * storage through an internal policy. The policy is implemented via
    * a pointer to function selected at construction time.
    */
-  template<class T, StoragePolicySwitch storagePolicy=ROWMAJOR>
+  template<class T=double, StoragePolicySwitch storagePolicy=ROWMAJOR>
   class MyMat0{
-    
+  public:
+    typedef typename std::vector<T>::size_type size_type;
   private:
     size_type nr,nc;
     //! Data storage
@@ -58,14 +69,41 @@ namespace LinearAlgebra{
     std::vector<T> data;
       //! The general template for the policies. Only declaration since I will always use full specializations
     //    template<StoragePolicySwitch thePolicy> size_type M_getIndex(size_type const & i, size_type const & j) const;
-T    //! Function returning index according to ordering
-    size_type getIndex(size_type const & i, size_type const & j, storageType<ROWMAJOR>) const;
-    size_type getIndex(size_type const & i, size_type const & j, storageType<COLUMNMAJOR>) const;
+    /*! This does not work since partial specialization is not possible
+      size_type getIndex(size_type const & i, size_type const & j) const;
+
+      I use enable_if to select the correct one 
+    */
+    //! Function returning index according to ordering
+    /*! I am using the trick of the book of Alexandrescu
+      It can be done also with enable_if:
+      
+      \code{.cpp}
+      size_type getIndex(size_type const & i, size_type const & j,
+      typename std::enable_if<storagePolicy==ROWMAJOR>::type* = nullptr) const;
+
+      size_type getIndex(size_type const & i, size_type const & j,
+      typename std::enable_if<storagePolicy==COLUMNMAJOR>::type* = nullptr) const;
+      \endcode
+      
+      I do not need in this case to define getIndex with only two arguments
+    */
+    size_type getIndex(size_type const & i, size_type const & j, Helpers::storagePolicyType<ROWMAJOR>) const
+    {
+      return j + i*nc;
+    }
+    size_type getIndex(size_type const & i, size_type const & j, Helpers::storagePolicyType<COLUMNMAJOR>) const
+    {
+      return i + j*nr;
+    }
+    //! The actual function returning the index
     size_type getIndex(size_type const & i, size_type const & j) const
     {
-      return getIndex(i,j,storageType<storagePolicy>());
+      return getIndex(i,j,Helpers::storagePolicyType<storagePolicy>());
     }
   public:
+    //! Returns the type of the stored values
+    typedef T value_type;
     //! It builds a matrix with n rows and m columns.
     /*!
       Since we give default value for the parameters, this
@@ -77,13 +115,28 @@ T    //! Function returning index according to ordering
       @param m number of columns.
       @param sPolicy the sorage policy (default rowmajor).
      */
-    explicit MyMat0(size_type n=0, size_type m=0): nr(n), nc(m), data(n*m,0.){};
+    explicit MyMat0(size_type n=0, size_type m=0): nr(n), nc(m), data(n*m)
+    {
+      // Set to zero if arithmetic
+      fillZero();
+    };
     //! Default copy constructor is ok
     MyMat0(const MyMat0&)=default;
     //! Default move constructor is ok
     MyMat0(MyMat0&&)=default;
     //! Default move assign is ok
     MyMat0& operator=(MyMat0&&)=default;
+    //! Fills of zero. Enabled only for arithmetic types
+    void fillZero(Helpers::fillSwitch<true>)
+    {
+      for (auto & i : data) i=T(0);
+    }
+    void fillZero(Helpers::fillSwitch<false>){}
+    //! Fills with zero if arithmetic type or pointer type.
+    void fillZero()
+    {
+      fillZero(Helpers::fillSwitch<std::is_arithmetic<T>::value||std::is_pointer<T>::value>());      
+    }
     //! Resizing the matrix
     /*!
      * The storage policy cannot be changed;
@@ -117,11 +170,49 @@ T    //! Function returning index according to ordering
       return storagePolicy;
     }
     //! Computes \f$ ||A||_\infty \f$
+    /*!
+      This method makes sense only for arithmetic types. 
+      I use static assert in the definition to make it work only for arithmetic types.
+      \code
+      T normInf()
+      {
+      static_assert(std::is_arithmetic<T>::value,"NormInf can be called only on arithmetic types");
+      ...
+      }
+      \endcode
+
+      As an alternative, I can use enable_if
+      \code
+      template <class T1=T>
+      typename std::enable_if<std::is_arithmetic<T1>::value, T1>::type normInf() const;
+      \endcode
+
+      In this case the method is not enabled at all if the condition (arithmetic type) is not satisfied.
+     */
     T normInf() const;
     //! Computes \f$ ||A||_1 \f$
-    T norm1() const;
+    /*!
+      To enable it only for arithmetic types I use here a trick that involves enable_if. 
+      But to make SFINAE work I need
+      to make the method a template method. But I give a default value, so in practice I can use
+      it as it were a non-template method
+    */
+
+    template <class T1=T>
+    typename std::enable_if<std::is_arithmetic<T1>::value, T1>::type norm1() const;
     //! Computes Frobenious norm
-    long double normF() const;
+    /*
+      Cannot return an integer type (in case T is an integer). A simple, yet not so nice
+      Alternative: use conditional
+      /code
+      template <class T1=T>
+      typename std::enable_if<std::is_arithmetic<T1>::value, 
+      typename std::conditional<std::is_integer<T1>::value,double,T1>::type
+      >::type normF() const;
+      /endcode
+     */
+    template <class T1=T>
+    typename std::enable_if<std::is_arithmetic<T1>::value, long double>::type normF() const;
     //! An example of matrix times vector
     /*!
      * It checks for consistency: the size of the vector must be equal
@@ -136,8 +227,10 @@ T    //! Function returning index according to ordering
      * @param seed Sets the seed value to initiate the pseudorandom generator.
      * If it is equal to 0 (default) the seed is set using the current time.
      * Otherwise the given value is used.
+     * ONly for arithmetic types
      */
-    void fillRandom(unsigned int seed=0);
+    template <class T1=T>
+    typename std::enable_if<std::is_arithmetic<T1>::value, void>::type  fillRandom(unsigned int seed=0);
     //! It shows matrix content
     /*!
      *  It pretty prints the matrix
@@ -153,50 +246,72 @@ T    //! Function returning index according to ordering
    * @return The result in a vector of the size = to the number of row
    */
   template<class T, StoragePolicySwitch storagePolicy>
-  std::vector<T> operator * (MyMat0<T,storagePolicy> const & m,std::vector<T> const & v);
+  std::vector<T> operator * (MyMat0<T, storagePolicy> const & m,std::vector<T> const & v);
 
   //                 DEFINITIONS
   
+  /*  THIS  DOES NOT WORK: PARTIAL SPECIALIZATION OF METHODS IS NOT ALLOWED */
   //! Specialization for row major ordering
   /*!
    Note: important to declare it inline. Otherwise it should go to a cpp file! And it will be less
    efficient!
   */
-  template<class T>
+  /*
+    template<class T>
   inline size_type MyMat0<T,ROWMAJOR>::getIndex(size_type const & i, size_type const & j) const
   {
-    return j + i*nc;
-  }
+    return i + j*nr;
+    }*/
   //! Specialization for column major ordering
   /*!
     Note: important to declare it inline. Otherwise it should go to a cpp file! And it will be less
     efficient!
   */
-  template<class T>
+  /*  template<class T>
   inline size_type MyMat0<T,COLUMNMAJOR>::getIndex(size_type const & i, size_type const & j) const
   {
-    return i + j*nr;;
+  return j + i*nc;
   }
-  
+  */
+
   template<class T, StoragePolicySwitch storagePolicy>
-  void MyMat0<T, storagePolicy>::resize(size_type const n, size_type const m)
+  void MyMat0<T,storagePolicy>::resize(size_type const n, size_type const m)
   {
     if(n*m != nc*nr)
       {
 	// clear data storage
 	data.resize(n*m);
 	data.shrink_to_fit();
-	  for (auto& i: data)i=0.0;
+	fillZero();
       }
     //! fix number of rows and column
     nr=n;
     nc=m;
   }
-  
-  template<class T, StoragePolicySwitch storagePolicy>
-  T MyMat0<T,storagePolicy>::normInf() const{
+    
+    /*
+      template<class T, StoragePolicySwitch storagePolicy>
+      template<class T1>
+      typename std::enable_if<std::is_arithmetic<T1>::value, T1>::type 
+      MyMat0<T,storagePolicy>::normInf() const
+      {
+      if(nr*nc==0)return 0;
+      T vmax(0.0);
+      
+      for (size_type i=0;i<nr;++i){
+      T vsum=0;
+      for (size_type j=0;j<nc;++j) vsum+=data[getIndex(i,j)];
+      vmax=std::max(vsum,vmax);
+      }
+      return vmax;
+      }
+    */
+    template<class T, StoragePolicySwitch storagePolicy>
+    T MyMat0<T,storagePolicy>::normInf() const
+    {
+    static_assert(std::is_arithmetic<T>::value," normInf can be used only on arithmetic types"); 
     if(nr*nc==0)return 0;
-    T vmax(0);
+    T vmax(0.0);
     
     for (size_type i=0;i<nr;++i){
       T vsum=0;
@@ -205,9 +320,12 @@ T    //! Function returning index according to ordering
     }
     return vmax;
   }
-  
+
+  /* Selection by enable_if */
   template<class T, StoragePolicySwitch storagePolicy>
-  T MyMat0<T,storagePolicy>::norm1() const{
+  template<class T1>
+  typename std::enable_if<std::is_arithmetic<T1>::value, T1>::type 
+  MyMat0<T,storagePolicy>::norm1() const{
     if(nr*nc==0)return 0;
     T vmax(0);
     for (size_type j=0;j<nc;++j){
@@ -218,10 +336,13 @@ T    //! Function returning index according to ordering
     return vmax;
   }
   
+
   template<class T, StoragePolicySwitch storagePolicy>
-  long double MyMat0<T,storagePolicy>::normF() const{
-    if(nr*nc==0)return 0;
-    long double vsum=0.0;
+  template<class T1>
+  typename std::enable_if<std::is_arithmetic<T1>::value, long double>::type
+  MyMat0<T,storagePolicy>::normF() const{
+    if(nr*nc==0)return 0.0;
+    long double vsum=0;
     for (auto const x: data) vsum+=x*x;
     return std::sqrt(vsum);
   }
@@ -235,9 +356,9 @@ T    //! Function returning index according to ordering
 	std::cerr<<" Vector must have the right size"<<std::endl;
 	std::exit(1);
       }
-    res.resize(nr,0);
+    res.resize(nr,T(0));
     // for efficiency I use two different algorithms
-
+    // I could have used overloading!
     switch(storagePolicy)
       {
       case ROWMAJOR:
@@ -250,20 +371,22 @@ T    //! Function returning index according to ordering
 	break;
       }
   }
-    
+  
   template<class T, StoragePolicySwitch storagePolicy>
-  void  MyMat0<T, storagePolicy>:: fillRandom(unsigned int seed)
-    {
-      if (seed==0) seed=std::time(0);
-      double rmax=static_cast<double>(RAND_MAX+2.0);
+  template<class T1>
+  typename std::enable_if<std::is_arithmetic<T1>::value, void>::type 
+  MyMat0<T, storagePolicy>:: fillRandom(unsigned int seed)
+  {
+    if (seed==0) seed=std::time(0);
+    double rmax=static_cast<double>(RAND_MAX+2.0);
     std::srand(seed);
     if(nr*nc>0)
-      for (auto& x: data) x=static_cast<double>(std::rand()+1)/rmax;
+      for (auto& x: data) x=static_cast<T>(std::rand()+1)/rmax;
   }
   
   
   template<class T, StoragePolicySwitch storagePolicy>
-  void MyMat0<T,storagePolicy>::showMe(std::ostream & out) const{
+  void MyMat0<T, storagePolicy>::showMe(std::ostream & out) const{
     out<<"[";
     for (size_type i=0;i<nr;++i){
       for (size_type j=0;j<nc-1;++j) out<< this->operator()(i,j)<<", ";
@@ -278,7 +401,7 @@ T    //! Function returning index according to ordering
   template<class T, StoragePolicySwitch storagePolicy>
   std::vector<T> operator * (MyMat0<T, storagePolicy> const & m,std::vector<T> const & v)
   {
-    std::vector<double> tmp;
+    std::vector<T> tmp;
     m.vecMultiply(v,tmp);
     return tmp;
   }

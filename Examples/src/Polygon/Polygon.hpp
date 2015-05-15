@@ -31,7 +31,7 @@ namespace Geometry
     Point2D(double xx=0.0, double yy=0.0):coor{{xx,yy}}{}
     //! Copy constructor
     Point2D(const Point2D&)=default;
-    //! Returns coordinates in a pair<double>.
+    //! Returns coordinates in a array<double>.
     std::array<double,2> get() const { return coor;}
     //! Sets point coordinates
     void set(double const &xx, double const &yy)
@@ -173,9 +173,9 @@ namespace Geometry
     Square & operator=(const Square &)=default;
     Square & operator=(Square &&)=default;
     //! Specialised version for squares
-    virtual double area() const;
+    double area() const;
     //! Specialised version for squares.
-    virtual void showMe(std::ostream & out=std::cout) const;
+    void showMe(std::ostream & out=std::cout) const;
   };
   
   //! A triangle

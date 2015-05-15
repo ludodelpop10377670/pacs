@@ -23,12 +23,12 @@ namespace LinearAlgebra {
   
   size_type MyMat0::rowMajorPolicy(size_type const & i, 
 				   size_type const & j) const{
-      return i + j*nr;
+    return j + i*nc;
     }
 
   size_type MyMat0::columnMajorPolicy(size_type const & i, 
 				      size_type const & j) const{
-    return j + i*nc;
+      return i + j*nr;
   }
 
   double  MyMat0::getValue(size_type const i, size_type const j) const
@@ -76,7 +76,7 @@ namespace LinearAlgebra {
     nc=m;
   }
   
-  const double MyMat0::normInf() const{
+  double MyMat0::normInf() const{
     double vmax(0.0);
     if(nr*nc==0)return 0;
     
@@ -88,7 +88,7 @@ namespace LinearAlgebra {
     return vmax;
   }
   
-  const double MyMat0::norm1() const{
+  double MyMat0::norm1() const{
     if(nr*nc==0)return 0;
     double vmax(0);
     for (size_type j=0;j<nc;++j){
@@ -99,7 +99,7 @@ namespace LinearAlgebra {
     return vmax;
   }
   
-  const double MyMat0::normF() const{
+  double MyMat0::normF() const{
     if(nr*nc==0)return 0;
     double vsum=0;
     for (size_type i=0;i<nr*nc;++i) vsum+=data[i]*data[i];
