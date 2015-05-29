@@ -2,6 +2,7 @@
 #define POLYNOMIAL_HPP
 #include <iostream>
 #include <vector>
+#include <sstream>
 #include <utility>
 class Polynomial{
 	public:

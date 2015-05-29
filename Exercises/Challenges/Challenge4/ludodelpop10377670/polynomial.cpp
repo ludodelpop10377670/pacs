@@ -1,6 +1,3 @@
-#include <iostream>
-#include <sstream>
-#include <math.h>
 #include "polynomial.hpp"
 
 Polynomial::Polynomial(std::vector<double> elem):coeff(elem){this->P_normalize();}
